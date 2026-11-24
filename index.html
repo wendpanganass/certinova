@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Sora:wght@500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <style>
 /* CERTINOVA — mise en page : écrans de préparation sur fond « nuit étoilée », tableur clair plein écran, panneau d'examen ancré en bas */
 :root{
@@ -503,6 +504,7 @@ textarea.w-in{height:auto;padding:4px;resize:vertical}
 <div id="scr-results" class="screen" hidden></div>
 <div id="scr-trainer" class="screen" hidden></div>
 <div id="scr-conv" class="screen" hidden></div>
+<div id="scr-att" class="screen" hidden></div>
 
 <script>
 /* Données des classeurs (reprises du modèle d'origine) */
@@ -5460,7 +5462,7 @@ function isWebUrl(u){ return /^https?:\/\//i.test(String(u||"")); }
 /* Adresse placée devant le code : jamais un fichier local (file://), qui n'existe que sur l'ordinateur du formateur */
 const PUBLIC_URL="https://wendpanganass.github.io/certinova/";
 function baseUrl(){ const s=store.get("baseUrl",""); if(isWebUrl(s)) return s; if(RUNTIME) return PUBLIC_URL; const here=location.href.split("#")[0].split("?")[0]; return isWebUrl(here)&&!/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(here)?here:PUBLIC_URL; }
-function freshLink(c){ const o={}; Object.keys(c).forEach(k=>{ if(k!=="link"&&k!=="t") o[k]=c[k]; }); return convLink(o); }
+function freshLink(c){ const o={}; Object.keys(c).forEach(k=>{ if(k!=="link"&&k!=="t"&&k!=="mail") o[k]=c[k]; }); return convLink(o); }
 function convLink(o){ return baseUrl()+"#c-"+encConv(o); }
 function newId(){ return Date.now().toString(36).slice(-5)+Math.random().toString(36).slice(2,6); }
 function serialFromIso(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||""); return m?dateSerial(+m[1],+m[2],+m[3]):null; }
@@ -5519,11 +5521,11 @@ function openConvocation(o){
       ${o.x!=null?`<tr><th>À composer avant le</th><td>${fmtSerial(o.x)} inclus</td></tr>`:""}
       <tr><th>Tentatives autorisées</th><td>${o.a?o.a:"Illimitées"}</td></tr>
     </table></div>
-    ${st.ok?`<form id="cvForm" class="cn-card" style="box-shadow:none;border:1px solid var(--cn-line);margin-top:16px"><div class="field"><label for="cvName">Nom et prénom</label><input id="cvName" required value="${escA(o.n||store.get("lastName",""))}"${o.n?" readonly":""}></div><button class="btn btn-star btn-block" type="submit">Continuer vers les consignes</button></form>`:`<div class="fb ko" style="margin-top:16px">${esc(st.msg)}</div>`}
+    ${st.ok?`<form id="cvForm" class="cn-card" style="box-shadow:none;border:1px solid var(--cn-line);margin-top:16px"><div class="field"><label for="cvName">Nom et prénom</label><input id="cvName" required value="${escA(o.n||store.get("lastName",""))}"${o.n?" readonly":""}></div><div class="field"><label for="cvMail">Adresse e-mail (facultatif, pour recevoir votre attestation)</label><input id="cvMail" type="email" autocomplete="email" value="${escA(store.get("lastMail",""))}"></div><button class="btn btn-star btn-block" type="submit">Continuer vers les consignes</button></form>`:`<div class="fb ko" style="margin-top:16px">${esc(st.msg)}</div>`}
     <p class="small muted" style="margin-top:16px">Un problème avec ce lien ? Contactez votre formateur.</p></div>`;
   show("scr-conv");
   const f=$("cvForm"); if(f) f.onsubmit=e=>{ e.preventDefault(); const name=$("cvName").value.trim(); if(!name) return;
-    E.candidate=name; E.group=o.g||""; E.mode=o.m; E.duration=o.d||0; E.order=sel.slice(); E.conv=o; store.set("lastName",name); renderBrief(); show("scr-brief"); };
+    E.candidate=name; E.group=o.g||""; E.mode=o.m; E.duration=o.d||0; E.order=sel.slice(); E.conv=o; E.mail=(($("cvMail")||{}).value||"").trim(); store.set("lastMail",E.mail); store.set("lastName",name); renderBrief(); show("scr-brief"); };
 }
 function codeEntryHtml(){ return `<div class="field"><label for="hmCode">Code ou lien de convocation</label><input id="hmCode" placeholder="Collez ici le lien reçu de votre formateur" autocomplete="off"></div><p class="small" id="hmCodeErr" style="color:var(--cn-bad);margin:-6px 0 8px"></p><button class="btn btn-night btn-block" type="button" id="hmCodeGo">Ouvrir la convocation</button>`; }
 function wireCodeEntry(){ const go=$("hmCodeGo"); if(!go) return; const run=()=>{ const o=decConv($("hmCode").value); if(!o){ $("hmCodeErr").textContent="Ce code n'est pas valide. Vérifiez que vous l'avez copié en entier."; return; } openConvocation(o); }; go.onclick=run; $("hmCode").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); run(); } }); }
@@ -5546,7 +5548,7 @@ async function revokeConv(id){
   try{ await DB.doc("config/revoked").set({ids:REVOKED.slice(-500)}); }catch(e){ toast("La révocation n'a pas pu être enregistrée."); }
   renderConvList();
 }
-function inviteText(c){ const lim=c.x!=null?" avant le "+fmtSerial(c.x)+" inclus":""; return `Bonjour${c.n?" "+c.n:""},\n\nVous êtes convoqué(e) à l'${EXAMS.find(x=>x.id===c.e).titre.toLowerCase()} Excel Expert sur CERTINOVA (${c.m==="exam"?"mode examen, "+(c.d?Math.round(c.d/60)+" minutes":"sans limite de temps"):"mode entraînement"}). Merci de composer${lim}, depuis un ordinateur.\n\nVotre lien personnel :\n${freshLink(c)}\n\nSi le lien ne s'ouvre pas, ouvrez ${baseUrl()} puis collez ce code dans « J'ai reçu un lien ou un code de convocation » :\n${encConv((()=>{ const o={}; Object.keys(c).forEach(k=>{ if(k!=="link"&&k!=="t") o[k]=c[k]; }); return o; })())}\n\nBonne préparation !`; }
+function inviteText(c){ const lim=c.x!=null?" avant le "+fmtSerial(c.x)+" inclus":""; return `Bonjour${c.n?" "+c.n:""},\n\nVous êtes convoqué(e) à l'${EXAMS.find(x=>x.id===c.e).titre.toLowerCase()} Excel Expert sur CERTINOVA (${c.m==="exam"?"mode examen, "+(c.d?Math.round(c.d/60)+" minutes":"sans limite de temps"):"mode entraînement"}). Merci de composer${lim}, depuis un ordinateur.\n\nVotre lien personnel :\n${freshLink(c)}\n\nSi le lien ne s'ouvre pas, ouvrez ${baseUrl()} puis collez ce code dans « J'ai reçu un lien ou un code de convocation » :\n${encConv((()=>{ const o={}; Object.keys(c).forEach(k=>{ if(k!=="link"&&k!=="t"&&k!=="mail") o[k]=c[k]; }); return o; })())}\n\nBonne préparation !`; }
 async function copyText(t,okMsg){ try{ await navigator.clipboard.writeText(t); toast(okMsg||"Copié dans le presse-papiers."); }catch(e){ cnModal("Copiez le texte",`<p>La copie automatique n'est pas disponible ici. Sélectionnez le texte puis appuyez sur Ctrl+C.</p><textarea id="cpT" style="min-height:160px">${esc(t)}</textarea>`,[{t:"Fermer",cls:"btn-night"}],b=>{ const ta=b.querySelector("#cpT"); setTimeout(()=>{ ta.focus(); ta.select(); },30); }); } }
 function renderConvAdmin(host){
   const durOpts=[[3000,"50 minutes"],[3600,"60 minutes"],[5400,"90 minutes"],[0,"Sans limite"]];
@@ -5563,16 +5565,16 @@ function renderConvAdmin(host){
       <div class="field"><label for="caAtt">Tentatives autorisées</label><select id="caAtt"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="0">Illimitées</option></select></div>
       <div class="field"><label>Après l'examen</label><label class="w-chk" style="font-weight:400;color:var(--cn-text)"><input type="checkbox" id="caSol"> Montrer le corrigé détaillé au candidat</label></div>
     </div>
-    <div class="field"><label for="caNames">Candidats (un nom par ligne). Laissez vide pour créer un seul lien de groupe.</label><textarea id="caNames" style="min-height:90px;font:inherit;padding:10px 12px;border:1px solid var(--cn-line);border-radius:8px" placeholder="Ouédraogo, Awa&#10;Traoré, Moussa"></textarea></div>
+    <div class="field"><label for="caNames">Candidats, un par ligne : « Nom ; e-mail » (l'e-mail est facultatif). Laissez vide pour créer un seul lien de groupe.</label><textarea id="caNames" style="min-height:90px;font:inherit;padding:10px 12px;border:1px solid var(--cn-line);border-radius:8px" placeholder="Ouédraogo, Awa ; awa@exemple.com&#10;Traoré, Moussa ; moussa@exemple.com"></textarea></div>
     <button class="btn btn-night" type="submit">Générer les liens</button></form>
     <div id="caOut"></div>`;
   const projSel=()=>{ const ex=EXAMS.find(x=>x.id===$("caExam").value); $("caProj").innerHTML=`<option value="all">Tous les projets (${ex.projects.length})</option>`+ex.projects.map((p,i)=>`<option value="${i}">Projet ${i+1} : ${esc(p.titre)}</option>`).join(""); };
   projSel(); $("caExam").onchange=projSel;
   $("caMode").onchange=()=>{ const tr=$("caMode").value==="train"; $("caDur").value=tr?"0":"3000"; $("caSol").checked=tr; $("caAtt").value=tr?"0":"1"; };
   $("cvAdm").onsubmit=async e=>{ e.preventDefault();
-    const names=$("caNames").value.split(/\n/).map(s=>s.trim()).filter(Boolean).slice(0,200); const pj=$("caProj").value;
+    const entries=$("caNames").value.split(/\n/).map(s=>s.trim()).filter(Boolean).slice(0,200).map(l=>{ const m=/^(.*?)\s*[;\t]\s*([^\s;]+@[^\s;]+)\s*$/.exec(l); return m?{n:m[1].trim(),mail:m[2]}:{n:l}; }); const names=entries.map(x=>x.n); const pj=$("caProj").value;
     const base={v:1,e:$("caExam").value,m:$("caMode").value,d:+$("caDur").value,g:$("caGroup").value.trim()||undefined,x:serialFromIso($("caLim").value)??undefined,a:+$("caAtt").value||undefined,s:$("caSol").checked?1:0,p:pj==="all"?undefined:[+pj]};
-    const list=(names.length?names:[null]).map(n=>{ const o=Object.assign({},base,{i:newId()}); if(n) o.n=n; Object.keys(o).forEach(k=>o[k]===undefined&&delete o[k]); const link=convLink(o); return Object.assign({},o,{link,t:Date.now()}); });
+    const list=(names.length?names:[null]).map((n,ix)=>{ const o=Object.assign({},base,{i:newId()}); if(n) o.n=n; Object.keys(o).forEach(k=>o[k]===undefined&&delete o[k]); const link=convLink(o); return Object.assign({},o,{link,t:Date.now()},entries[ix]&&entries[ix].mail?{mail:entries[ix].mail}:{}); });
     await saveConvs(list);
     $("caOut").innerHTML=`<div class="fb ok" style="margin-top:14px"><b>${list.length} lien${list.length>1?"s":""} généré${list.length>1?"s":""}.</b> ${RUNTIME?"Pour que vos candidats puissent ouvrir les liens, partagez CERTINOVA depuis le menu Partager de la page (lien public ou invitation).":""}</div>
       <div class="history tbl-scroll" style="margin-top:10px"><table><tr><th>Candidat</th><th>Lien</th><th></th></tr>${list.map((c,k)=>`<tr><td>${esc(c.n||"Lien de groupe")}</td><td><span class="small" style="font-family:var(--f-mono);word-break:break-all">${esc(c.link.slice(0,64))}…</span></td><td style="white-space:nowrap"><button class="btn btn-line" style="padding:5px 10px;font-size:12.5px" data-cl="${k}">Copier le lien</button> <button class="btn btn-line" style="padding:5px 10px;font-size:12.5px" data-ci="${k}">Copier l'invitation</button></td></tr>`).join("")}</table></div>
@@ -5610,7 +5612,7 @@ function renderAccessSettings(host){
    ============================================================ */
 'use strict';
 const SIGNER_DEFAULT={name:"W Abdoul Nassir SIMPORE",title:"Microsoft Certified Trainer"};
-function signer(){ const s=(CONFIG&&CONFIG.signer)||store.get("signer",null)||{}; return {name:s.name||SIGNER_DEFAULT.name,title:s.title||SIGNER_DEFAULT.title}; }
+function signer(){ const s=(CONFIG&&CONFIG.signer)||store.get("signer",null)||{}; return {name:s.name||SIGNER_DEFAULT.name,title:s.title||SIGNER_DEFAULT.title,place:s.place||""}; }
 function certEligible(r){ return !!r&&r.mode==="exam"&&r.score>=700; }
 function certNumber(r){ return "CN-"+String(r.id).toUpperCase(); }
 const DOM_SHORT={OPT:"Options et paramètres",DATA:"Gestion des données",FORM:"Formules et macros",CHART:"Graphiques et tableaux"};
@@ -5669,16 +5671,16 @@ async function drawCertificate(r){
   text("Ce certificat atteste la réussite d'un examen blanc CERTINOVA. Il ne constitue pas une certification délivrée par Microsoft.",cx,1570,"22px "+SANS,MUTED);
   return c;
 }
-function canvasToPdf(c){
+function canvasToPdf(c){ const PW=c.width>=c.height?842:595, PH=c.width>=c.height?595:842;
   const url=c.toDataURL("image/jpeg",0.93); const bin=atob(url.split(",")[1]); const img=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) img[i]=bin.charCodeAt(i);
   const enc=s=>new TextEncoder().encode(s); const parts=[]; const off=[]; let len=0; const push=u=>{ parts.push(u); len+=u.length; };
   const obj=(n,s)=>{ off[n]=len; push(enc(n+" 0 obj\n"+s+"\nendobj\n")); };
   push(enc("%PDF-1.4\n")); push(new Uint8Array([37,226,227,207,211,10]));
   obj(1,"<< /Type /Catalog /Pages 2 0 R >>");
   obj(2,"<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-  obj(3,"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
+  obj(3,"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+PW+" "+PH+"] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>");
   off[4]=len; push(enc("4 0 obj\n<< /Type /XObject /Subtype /Image /Width "+c.width+" /Height "+c.height+" /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+img.length+" >>\nstream\n")); push(img); push(enc("\nendstream\nendobj\n"));
-  const content="q 842 0 0 595 0 0 cm /Im0 Do Q"; obj(5,"<< /Length "+content.length+" >>\nstream\n"+content+"\nendstream");
+  const content="q "+PW+" 0 0 "+PH+" 0 0 cm /Im0 Do Q"; obj(5,"<< /Length "+content.length+" >>\nstream\n"+content+"\nendstream");
   obj(6,"<< /Title (Certificat CERTINOVA) /Producer (CERTINOVA) >>");
   const xref=len; let x="xref\n0 7\n0000000000 65535 f \n"; for(let i=1;i<=6;i++) x+=String(off[i]).padStart(10,"0")+" 00000 n \n";
   push(enc(x+"trailer\n<< /Size 7 /Root 1 0 R /Info 6 0 R >>\nstartxref\n"+xref+"\n%%EOF\n"));
@@ -5707,14 +5709,196 @@ function certBlockHtml(rec){
 }
 function renderCertVerify(host){
   host.innerHTML=`<h3 style="margin:0 0 6px;font-family:var(--f-display);font-size:16px">Vérifier un certificat</h3><p class="small muted" style="margin:0 0 8px">Saisissez le numéro figurant sur le certificat (CN-…). La vérification porte sur les résultats reçus dans cet espace.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="cvNum" placeholder="CN-…" style="flex:1;min-width:200px;font:inherit;padding:9px 12px;border:1px solid var(--cn-line);border-radius:8px"><button class="btn btn-night" id="cvCheck" type="button">Vérifier</button></div><div id="cvRes" style="margin-top:10px"></div>
-    <h3 style="margin:18px 0 6px;font-family:var(--f-display);font-size:16px">Signataire des certificats</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"><div class="field"><label for="sgName">Nom</label><input id="sgName" value="${escA(signer().name)}"></div><div class="field"><label for="sgTitle">Titre</label><input id="sgTitle" value="${escA(signer().title)}"></div></div><button class="btn btn-line" id="sgSave" type="button">Enregistrer le signataire</button>`;
+    <h3 style="margin:18px 0 6px;font-family:var(--f-display);font-size:16px">Signataire des certificats et attestations</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"><div class="field"><label for="sgName">Nom</label><input id="sgName" value="${escA(signer().name)}"></div><div class="field"><label for="sgTitle">Titre</label><input id="sgTitle" value="${escA(signer().title)}"></div><div class="field"><label for="sgPlace">Lieu (« Fait à … » sur l'attestation)</label><input id="sgPlace" value="${escA(signer().place)}" placeholder="Ex. : Ouagadougou"></div></div><button class="btn btn-line" id="sgSave" type="button">Enregistrer le signataire</button>`;
   const run=()=>{ const v=$("cvNum").value.trim().toUpperCase().replace(/^CN-?/,""); const r=TR_ALL.find(x=>String(x.id).toUpperCase()===v);
     $("cvRes").innerHTML=!v?"":(r&&certEligible(r)?`<div class="fb ok"><b>Certificat authentique.</b> ${esc(r.name)} · ${esc(examTitle(r.exam))} · ${r.score} / 1000 · ${new Date(r.date).toLocaleDateString("fr-FR")}${r.group?" · "+esc(r.group):""}</div>`:r?`<div class="fb ko">Ce numéro correspond à une épreuve sans certificat (score ${r.score} / 1000, mode ${r.mode==="exam"?"examen":"entraînement"}).</div>`:`<div class="fb ko">Aucun résultat ne correspond à ce numéro dans votre espace. Si le candidat a composé hors ligne, importez d'abord son code de résultat.</div>`); };
   $("cvCheck").onclick=run; $("cvNum").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); run(); } });
-  $("sgSave").onclick=async()=>{ const s={name:$("sgName").value.trim()||SIGNER_DEFAULT.name,title:$("sgTitle").value.trim()||SIGNER_DEFAULT.title}; store.set("signer",s); CONFIG.signer=s;
+  $("sgSave").onclick=async()=>{ const s={name:$("sgName").value.trim()||SIGNER_DEFAULT.name,title:$("sgTitle").value.trim()||SIGNER_DEFAULT.title,place:$("sgPlace").value.trim()}; store.set("signer",s); CONFIG.signer=s;
     if(RUNTIME&&DB&&CAN_ADMIN){ try{ await DB.doc("config/main").set({access:CONFIG.access||"open",signer:s}); }catch(e){ toast("Le signataire n'a pas pu être enregistré en ligne."); return; } } toast("Signataire enregistré."); };
 }
 document.addEventListener("click",e=>{ const b=e.target.closest("[data-certid]"); if(!b) return; const id=b.dataset.certid; const r=(E.finished&&E.finished.rec.id===id)?E.finished.rec:TR_ALL.find(x=>x.id===id); if(r) showCertificate(r); });
+
+;
+/* ============================================================
+   CERTINOVA — Attestation de réussite signée (ECDSA P-256)
+   Le formateur signe avec sa clé privée (importée dans son navigateur) ;
+   tout le monde vérifie avec la clé publique intégrée au site.
+   ============================================================ */
+'use strict';
+const ATT_PUB={kty:"EC",crv:"P-256",x:"Z98hK41Dh_xmV6XLwQvypprqxrHTyCnsl0RZkzgWy60",y:"2T1xU6xIqheos4qaEGT4CpVPwjYHcomQhos4qi1tA2o",ext:true};
+const ALG={name:"ECDSA",namedCurve:"P-256"}, SIG={name:"ECDSA",hash:"SHA-256"};
+let ATT_KEY=null, ATT_PUBKEY=null;
+function hasCrypto(){ return !!(window.crypto&&crypto.subtle); }
+async function attPublicKey(){ if(!ATT_PUBKEY) ATT_PUBKEY=await crypto.subtle.importKey("jwk",ATT_PUB,ALG,false,["verify"]); return ATT_PUBKEY; }
+async function attPrivateKey(){
+  if(ATT_KEY) return ATT_KEY; const j=store.get("attKey",null); if(!j||!hasCrypto()) return null;
+  try{ ATT_KEY=await crypto.subtle.importKey("jwk",{kty:"EC",crv:"P-256",x:j.x,y:j.y,d:j.d,ext:true},ALG,false,["sign"]); return ATT_KEY; }catch(e){ return null; }
+}
+async function importAttKeyText(t){
+  let j; try{ j=JSON.parse(t); }catch(e){ throw new Error("Ce fichier n'est pas une clé CERTINOVA."); }
+  if(!j||j.crv!=="P-256"||!j.d) throw new Error("Ce fichier n'est pas une clé privée CERTINOVA.");
+  if(j.x!==ATT_PUB.x||j.y!==ATT_PUB.y) throw new Error("Cette clé ne correspond pas à la clé publique de ce site.");
+  const k=await crypto.subtle.importKey("jwk",{kty:"EC",crv:"P-256",x:j.x,y:j.y,d:j.d,ext:true},ALG,false,["sign"]);
+  const probe=new TextEncoder().encode("certinova-test"); const sg=await crypto.subtle.sign(SIG,k,probe);
+  if(!await crypto.subtle.verify(SIG,await attPublicKey(),sg,probe)) throw new Error("La clé n'a pas pu être vérifiée.");
+  store.set("attKey",{x:j.x,y:j.y,d:j.d}); ATT_KEY=k; return true;
+}
+/* ---------- encodage du lien signé ---------- */
+function bytesToB36(bytes){ let n=1n; for(const b of bytes) n=(n<<8n)|BigInt(b); return n.toString(36); }
+function b36ToBytes(s){ let n=0n; for(const ch of s.toLowerCase()){ const d=parseInt(ch,36); if(isNaN(d)) return null; n=n*36n+BigInt(d); } const out=[]; while(n>255n){ out.unshift(Number(n&255n)); n>>=8n; } return n===1n?new Uint8Array(out):null; }
+function attPayload(r){
+  const pc=k=>r.dom&&r.dom[k]&&r.dom[k][1]?Math.round(100*r.dom[k][0]/r.dom[k][1]):null;
+  const o={v:1,i:r.id,n:r.name,e:r.exam||"ex1",s:r.score,t:String(r.date).slice(0,10),a:new Date().toISOString().slice(0,10),o:["OPT","DATA","FORM","CHART"].map(pc)};
+  if(r.group) o.g=r.group; if(r.duration) o.du=Math.round(r.duration/60); const S=signer(); o.sn=S.name; o.st=S.title; if(S.place) o.sp=S.place; return o;
+}
+async function signAttestation(r){
+  const key=await attPrivateKey(); if(!key) throw new Error("Aucune clé de signature n'est installée dans ce navigateur.");
+  const json=new TextEncoder().encode(JSON.stringify(attPayload(r))); const sig=new Uint8Array(await crypto.subtle.sign(SIG,key,json));
+  const buf=new Uint8Array(2+json.length+sig.length); buf[0]=json.length>>8; buf[1]=json.length&255; buf.set(json,2); buf.set(sig,2+json.length);
+  return bytesToB36(buf);
+}
+async function readAttestation(code){
+  const b=b36ToBytes(String(code||"").replace(/^.*#/,"").replace(/^a-/i,"").trim()); if(!b||b.length<70) return null;
+  const L=(b[0]<<8)|b[1]; if(2+L+64!==b.length) return null; const json=b.slice(2,2+L), sig=b.slice(2+L);
+  let p; try{ p=JSON.parse(new TextDecoder().decode(json)); }catch(e){ return null; }
+  let ok=false; try{ ok=hasCrypto()&&await crypto.subtle.verify(SIG,await attPublicKey(),sig,json); }catch(e){}
+  return {p,ok,checked:hasCrypto()};
+}
+function attLink(code){ return baseUrl()+"#a-"+code; }
+function attNumber(p){ return "AT-"+String(p.i).toUpperCase(); }
+function frDate(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(iso||""); if(!m) return ""; return new Date(Date.UTC(+m[1],+m[2]-1,+m[3])).toLocaleDateString("fr-FR",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"}); }
+
+/* ---------- dessin de l'attestation (A4 portrait) ---------- */
+function qrModules(text){ try{ if(typeof qrcode!=="function") return null; const q=qrcode(0,"M"); q.addData(text,"Byte"); q.make(); const n=q.getModuleCount(); return {n,dark:(r,c)=>q.isDark(r,c)}; }catch(e){ return null; } }
+async function drawAttestation(p,link){
+  const W=1654,H=2339,M=150; const c=document.createElement("canvas"); c.width=W; c.height=H; const g=c.getContext("2d");
+  try{ await Promise.all(["700 60px Sora","600 60px Sora","72px 'Great Vibes'"].map(f=>document.fonts.load(f))); }catch(e){}
+  const logo=new Image(); logo.src=LOGO_SRC; try{ await logo.decode(); }catch(e){}
+  const ROYAL="#104FA2", CYAN="#0094DA", INK="#071D40", MUTED="#5B6878", SANS="'Segoe UI', Arial, sans-serif";
+  const T=(t,x,y,font,color,align)=>{ g.font=font; g.fillStyle=color; g.textAlign=align||"left"; g.textBaseline="alphabetic"; g.fillText(t,x,y); };
+  const wrap=(t,x,y,maxW,font,color,lh)=>{ g.font=font; g.fillStyle=color; g.textAlign="left"; const words=t.split(/\s+/); let line="", yy=y;
+    words.forEach(w=>{ const test=line?line+" "+w:w; if(g.measureText(test).width>maxW&&line){ g.fillText(line,x,yy); line=w; yy+=lh; } else line=test; }); if(line){ g.fillText(line,x,yy); yy+=lh; } return yy; };
+  g.fillStyle="#FFFFFF"; g.fillRect(0,0,W,H);
+  g.fillStyle=ROYAL; g.fillRect(0,0,W,18); g.fillStyle=CYAN; g.fillRect(0,18,W,6);
+  if(logo.naturalWidth){ const lh=150, lw=lh*logo.naturalWidth/logo.naturalHeight; g.drawImage(logo,M,80,lw,lh); }
+  T("N° "+attNumber(p),W-M,140,"600 30px "+SANS,ROYAL,"right"); T("Délivrée le "+frDate(p.a),W-M,184,"26px "+SANS,MUTED,"right");
+  g.strokeStyle="#D6DDE6"; g.lineWidth=2; g.beginPath(); g.moveTo(M,280); g.lineTo(W-M,280); g.stroke();
+  T("ATTESTATION DE RÉUSSITE",W/2,400,"700 66px Sora, "+SANS,ROYAL,"center");
+  g.fillStyle=CYAN; g.fillRect(W/2-90,430,180,6);
+  const ex=EXAMS.find(x=>x.id===p.e)||EXAMS[0]; const S={name:p.sn||signer().name,title:p.st||signer().title,place:p.sp||""};
+  let y=560;
+  y=wrap("Je soussigné, "+S.name+", "+S.title+", formateur CERTINOVA, atteste que :",M,y,W-2*M,"36px "+SANS,INK,56);
+  y+=40; g.font="600 64px Sora, "+SANS; let fs=64; while(g.measureText(p.n).width>W-2*M&&fs>34){ fs-=4; g.font="600 "+fs+"px Sora, "+SANS; }
+  T(p.n,W/2,y+20,g.font,INK,"center"); y+=110;
+  const dur=p.du?"d'une durée de "+p.du+" minutes ":"";
+  y=wrap("a réussi, le "+frDate(p.t)+", l'"+ex.titre.toLowerCase()+" de préparation à la certification Microsoft Office Specialist : Excel Expert (Microsoft 365 Apps, MO-211), organisé sur la plateforme CERTINOVA dans les conditions de l'examen : épreuve chronométrée "+dur+"composée de tâches pratiques réalisées dans un tableur et notées automatiquement."+(p.g?" Session : "+p.g+".":""),M,y,W-2*M,"34px "+SANS,INK,54);
+  y+=30; g.fillStyle="#F0F6FC"; g.fillRect(M,y,W-2*M,150); g.fillStyle=ROYAL; g.fillRect(M,y,10,150);
+  T("Score obtenu",M+50,y+62,"28px "+SANS,MUTED); T(p.s+" / 1000",M+50,y+122,"700 56px Sora, "+SANS,ROYAL);
+  T("Score requis",W/2+40,y+62,"28px "+SANS,MUTED); T("700 / 1000",W/2+40,y+122,"600 48px Sora, "+SANS,INK); y+=210;
+  const labels=["Gérer les options et paramètres des classeurs","Gérer et mettre en forme les données","Créer des formules et des macros avancées","Gérer des graphiques et tableaux avancés"];
+  T("Résultats par domaine de compétences",M,y,"600 30px "+SANS,INK); y+=30;
+  labels.forEach((l,i)=>{ const v=(p.o||[])[i]; if(v==null) return; y+=56; T(l,M,y,"28px "+SANS,INK); const bx=W-M-430; g.fillStyle="#E3EAF4"; g.fillRect(bx,y-20,320,14); g.fillStyle=v>=70?CYAN:"#A9B5C6"; g.fillRect(bx,y-20,320*v/100,14); T(v+" %",W-M,y,"600 28px "+SANS,v>=70?ROYAL:MUTED,"right"); });
+  y+=90; y=wrap("La présente attestation est délivrée à l'intéressé(e) pour servir et valoir ce que de droit.",M,y,W-2*M,"italic 32px "+SANS,INK,50);
+  // QR de vérification + signature
+  const by=Math.max(y+60,1800);
+  const qr=link?qrModules(link):null; const qs=300;
+  if(qr){ const cell=qs/qr.n; g.fillStyle="#FFFFFF"; g.fillRect(M-10,by-10,qs+20,qs+20); g.fillStyle=INK; for(let r=0;r<qr.n;r++) for(let cc=0;cc<qr.n;cc++) if(qr.dark(r,cc)) g.fillRect(M+cc*cell,by+r*cell,Math.ceil(cell),Math.ceil(cell));
+    T("Authenticité vérifiable :",M,by+qs+48,"600 24px "+SANS,INK); T("scannez ce code",M,by+qs+80,"24px "+SANS,MUTED); }
+  else if(link){ T("Vérification en ligne :",M,by+40,"600 24px "+SANS,INK); T(baseUrl(),M,by+76,"22px "+SANS,MUTED); }
+  const sx=W-M-300;
+  T((S.place?"Fait à "+S.place+", le ":"Fait le ")+frDate(p.a),sx,by+40,"30px "+SANS,INK,"center");
+  const cursive=S.name.split(/\s+/).map(w=>w.length>1&&w===w.toUpperCase()?w[0]+w.slice(1).toLowerCase():w).join(" ");
+  g.font="72px 'Great Vibes', 'Segoe Script', cursive"; let cf=72; while(g.measureText(cursive).width>560&&cf>40){ cf-=4; g.font=cf+"px 'Great Vibes', 'Segoe Script', cursive"; }
+  T(cursive,sx,by+190,g.font,INK,"center"); g.strokeStyle=INK; g.lineWidth=2; g.beginPath(); g.moveTo(sx-270,by+215); g.lineTo(sx+270,by+215); g.stroke();
+  T(S.name,sx,by+262,"700 30px "+SANS,INK,"center"); T(S.title,sx,by+302,"28px "+SANS,ROYAL,"center"); T("Formateur CERTINOVA",sx,by+340,"italic 24px "+SANS,MUTED,"center");
+  g.fillStyle=ROYAL; g.fillRect(0,H-90,W,90);
+  T("Attestation de réussite à un examen blanc CERTINOVA. Elle ne constitue pas une certification délivrée par Microsoft.",W/2,H-38,"24px "+SANS,"#FFFFFF","center");
+  return c;
+}
+async function savePdfCanvas(c,filename){
+  const blob=new Blob([canvasToPdf(c)],{type:"application/pdf"});
+  if(RUNTIME){ let d=null; try{ d=await window.claude.use("downloads"); }catch(e){}
+    if(d){ try{ await d.save({filename,data:blob}); toast("Fichier enregistré."); }catch(e){ if(!(e&&e.code==="declined")) toast("Le téléchargement n'est pas disponible ici."); } return; }
+    toast("Le téléchargement n'est pas disponible ici."); return; }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },2000);
+}
+function attFileName(p){ return "Attestation CERTINOVA - "+String(p.n||"candidat").replace(/[\\/:*?"<>|]/g," ").replace(/\s+/g," ").trim()+".pdf"; }
+
+/* ---------- page publique : consultation et vérification ---------- */
+async function openAttestationView(code){
+  const host=$("scr-att"); show("scr-att");
+  host.innerHTML=`<div class="rev" style="max-width:900px">${brandLogo(46)}<p class="muted">Vérification de l'attestation…</p></div>`;
+  const res=await readAttestation(code);
+  if(!res){ host.innerHTML=`<div class="rev" style="max-width:760px">${brandLogo(46)}<h1>Attestation introuvable</h1><div class="fb ko">Ce lien d'attestation est incomplet ou a été modifié. Demandez au formateur de vous renvoyer le lien d'origine.</div></div>`; return; }
+  const {p,ok,checked}=res; const ex=EXAMS.find(x=>x.id===p.e)||EXAMS[0];
+  host.innerHTML=`<div class="rev" style="max-width:980px">${brandLogo(46)}
+    <h1>Attestation de réussite</h1>
+    ${ok?`<div class="fb ok"><b>Attestation authentique.</b> Elle a été délivrée et signée numériquement par ${esc(p.sn||"le formateur")}, ${esc(p.st||"")}, et n'a pas été modifiée.</div>`
+      :checked?`<div class="fb ko"><b>Attestation non valide.</b> La signature ne correspond pas : ce document n'a pas été délivré par le formateur CERTINOVA ou il a été modifié.</div>`
+      :`<div class="fb hint">Votre navigateur ne permet pas de vérifier la signature. Ouvrez ce lien dans un navigateur récent (Chrome, Edge, Firefox, Safari).</div>`}
+    <div class="history" style="margin-top:14px"><table>
+      <tr><th style="width:38%">Titulaire</th><td><b>${esc(p.n)}</b></td></tr>
+      <tr><th>Épreuve</th><td>${esc(ex.titre)} · Excel Expert (MO-211)</td></tr>
+      <tr><th>Score</th><td>${p.s} / 1000 (score requis : 700)</td></tr>
+      <tr><th>Date de l'épreuve</th><td>${frDate(p.t)}</td></tr>
+      <tr><th>N° d'attestation</th><td>${attNumber(p)} · délivrée le ${frDate(p.a)}</td></tr></table></div>
+    ${ok?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0"><button class="btn btn-star" id="atDl">Télécharger l'attestation (PDF)</button></div><div id="atPrev" class="small muted" style="border:1px solid var(--cn-line);border-radius:10px;background:#fff;min-height:160px;display:grid;place-items:center">Préparation de l'aperçu…</div>`:""}
+    <p class="small muted" style="margin-top:16px">CERTINOVA est un outil de préparation indépendant. Cette attestation certifie la réussite d'un examen blanc ; elle ne constitue pas une certification délivrée par Microsoft.</p></div>`;
+  if(!ok) return;
+  const link=attLink(String(code).replace(/^.*#/,"").replace(/^a-/i,"")); const c=await drawAttestation(p,link);
+  const img=new Image(); img.src=c.toDataURL("image/png"); img.alt="Attestation de réussite de "+p.n; img.style.cssText="width:100%;max-width:720px;height:auto;display:block;margin:0 auto;box-shadow:0 8px 30px rgba(7,29,64,.15)";
+  const pv=$("atPrev"); pv.innerHTML=""; pv.style.padding="16px"; pv.appendChild(img);
+  $("atDl").onclick=()=>savePdfCanvas(c,attFileName(p));
+}
+
+/* ---------- espace formateur : délivrer et envoyer ---------- */
+function attStore(){ return store.get("atts",{}); }
+function attEmailFor(r){ const m=store.get("mails",{}); if(m[r.id]) return m[r.id]; if(r.mail) return r.mail; const cv=(CONV_LIST||store.get("convs",[])).find(c=>c.i===r.conv); return cv&&cv.mail||""; }
+function firstName(n){ const s=String(n||"").trim(); if(s.includes(",")) return s.split(",").pop().trim(); return s.split(/\s+/)[0]||s; }
+function attMail(r,link){ const ex=EXAMS.find(x=>x.id===r.exam)||EXAMS[0]; const S=signer();
+  const su="Votre attestation de réussite CERTINOVA — "+ex.titre;
+  const body=`Bonjour ${firstName(r.name)},\n\nFélicitations ! Vous avez réussi l'${ex.titre.toLowerCase()} Excel Expert (MO-211) sur CERTINOVA avec un score de ${r.score}/1000.\n\nVotre attestation de réussite est disponible à cette adresse (consultation et téléchargement en PDF) :\n${link}\n\nCe lien permet aussi à un employeur ou à un établissement de vérifier son authenticité.\n\nBonne continuation dans votre préparation à la certification.\n\n${S.name}\n${S.title}\nFormateur CERTINOVA`;
+  return {su,body}; }
+function renderAttAdmin(host){
+  if(!host) return;
+  host.innerHTML=`<h3 style="margin:0 0 4px;font-family:var(--f-display);font-size:16px">Attestations de réussite</h3><p class="small muted" style="margin:0 0 10px">Délivrez une attestation signée aux candidats reçus (mode Examen, 700/1000 ou plus) et envoyez-leur le lien. Le candidat consulte et télécharge son attestation ; un employeur peut en vérifier l'authenticité.</p><div id="attKeyBox"></div><div id="attList" style="margin-top:12px"></div>`;
+  renderAttKeyBox(); renderAttList();
+}
+async function renderAttKeyBox(){
+  const b=$("attKeyBox"); if(!b) return;
+  if(!hasCrypto()){ b.innerHTML=`<div class="fb ko">Ce navigateur ne permet pas de signer des attestations. Ouvrez CERTINOVA depuis son adresse https://.</div>`; return; }
+  const k=await attPrivateKey();
+  b.innerHTML=k?`<div class="fb ok" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="flex:1"><b>Clé de signature active</b> dans ce navigateur.</span><button class="btn btn-line" id="attKeyDel" style="padding:5px 10px;font-size:12.5px">Retirer la clé de ce navigateur</button></div>`
+    :`<div class="fb hint"><b>Installez votre clé de signature</b> (à faire une fois par navigateur). Choisissez le fichier <code>cle-signature-attestations-CERTINOVA.json</code> que vous avez reçu. Gardez ce fichier pour vous : il permet de signer des attestations à votre nom.<div style="margin-top:8px"><input type="file" id="attKeyFile" accept=".json,application/json"></div><p class="small" id="attKeyErr" style="color:var(--cn-bad);margin:6px 0 0"></p></div>`;
+  const del=$("attKeyDel"); if(del) del.onclick=()=>{ store.del("attKey"); ATT_KEY=null; renderAttKeyBox(); renderAttList(); };
+  const f=$("attKeyFile"); if(f) f.onchange=()=>{ const file=f.files[0]; if(!file) return; const rd=new FileReader(); rd.onload=async()=>{ try{ await importAttKeyText(String(rd.result)); toast("Clé de signature installée."); renderAttKeyBox(); renderAttList(); }catch(e){ $("attKeyErr").textContent=e.message; } }; rd.readAsText(file); };
+}
+async function renderAttList(){
+  const host=$("attList"); if(!host) return;
+  await loadConvs().catch(()=>{});
+  const best={}; TR_ALL.filter(certEligible).forEach(r=>{ const k=(r.name||"").toLowerCase()+"|"+(r.exam||"ex1"); if(!best[k]||r.score>best[k].score) best[k]=r; });
+  const list=Object.values(best).sort((a,b)=>b.date.localeCompare(a.date));
+  const atts=attStore(), sent=store.get("attSent",{}); const key=await attPrivateKey();
+  if(!list.length){ host.innerHTML=`<p class="muted">Aucun candidat reçu pour l'instant. Les candidats ayant obtenu 700/1000 ou plus en mode Examen apparaîtront ici (pensez à importer leurs codes de résultat).</p>`; return; }
+  host.innerHTML=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"><button class="btn btn-night" id="attAll"${key?"":" disabled"}>Délivrer toutes les attestations</button><button class="btn btn-line" id="attCopyAll">Copier tous les liens (tableur)</button></div>
+    <div class="history tbl-scroll"><table><tr><th>Candidat</th><th>Épreuve</th><th>Score</th><th>E-mail</th><th>Statut</th><th>Actions</th></tr>${list.map((r,k)=>{ const a=atts[r.id]; const ex=EXAMS.find(x=>x.id===r.exam)||EXAMS[0];
+      return `<tr><td><b>${esc(r.name)}</b>${r.group?`<br><span class="small muted">${esc(r.group)}</span>`:""}</td><td>${esc(ex.titre.replace("Examen blanc ","Ex. "))}<br><span class="small muted">${new Date(r.date).toLocaleDateString("fr-FR")}</span></td><td><b>${r.score}</b></td>
+      <td><input data-am="${k}" type="email" value="${escA(attEmailFor(r))}" placeholder="adresse@exemple.com" style="width:190px;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--cn-line);border-radius:6px"></td>
+      <td>${a?(sent[r.id]?`<span class="chip ok">Envoyée le ${new Date(sent[r.id]).toLocaleDateString("fr-FR")}</span>`:`<span class="chip">Délivrée</span>`):`<span class="chip warn">À délivrer</span>`}</td>
+      <td style="white-space:nowrap">${a?`<a class="btn btn-line" style="padding:5px 9px;font-size:12.5px" data-ag="${k}" target="_blank" rel="noopener" href="#">Gmail</a> <a class="btn btn-line" style="padding:5px 9px;font-size:12.5px" data-ae="${k}" href="#">E-mail</a> <button class="btn btn-line" style="padding:5px 9px;font-size:12.5px" data-ac="${k}">Copier le lien</button> <button class="btn btn-line" style="padding:5px 9px;font-size:12.5px" data-av="${k}">Aperçu</button>`:`<button class="btn btn-night" style="padding:5px 10px;font-size:12.5px" data-ad="${k}"${key?"":" disabled title=\"Installez d'abord votre clé de signature\""}>Délivrer</button>`}</td></tr>`; }).join("")}</table></div>`;
+  const mails=()=>store.get("mails",{});
+  host.querySelectorAll("[data-am]").forEach(i=>i.onchange=()=>{ const m=mails(); m[list[+i.dataset.am].id]=i.value.trim(); store.set("mails",m); renderAttList(); });
+  const issue=async r=>{ const code=await signAttestation(r); const s=attStore(); s[r.id]={code,at:Date.now()}; store.set("atts",s); };
+  host.querySelectorAll("[data-ad]").forEach(b=>b.onclick=async()=>{ b.disabled=true; try{ await issue(list[+b.dataset.ad]); toast("Attestation délivrée."); }catch(e){ toast(e.message); } renderAttList(); });
+  const linkOf=r=>attLink(attStore()[r.id].code);
+  const markSent=r=>{ const s=store.get("attSent",{}); s[r.id]=Date.now(); store.set("attSent",s); setTimeout(renderAttList,300); };
+  host.querySelectorAll("[data-ag]").forEach(a=>{ const r=list[+a.dataset.ag]; const m=attMail(r,linkOf(r)); a.href="https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(attEmailFor(r))+"&su="+encodeURIComponent(m.su)+"&body="+encodeURIComponent(m.body); a.onclick=()=>markSent(r); });
+  host.querySelectorAll("[data-ae]").forEach(a=>{ const r=list[+a.dataset.ae]; const m=attMail(r,linkOf(r)); a.href="mailto:"+encodeURIComponent(attEmailFor(r)).replace(/%40/g,"@")+"?subject="+encodeURIComponent(m.su)+"&body="+encodeURIComponent(m.body); a.onclick=()=>markSent(r); });
+  host.querySelectorAll("[data-ac]").forEach(b=>b.onclick=()=>{ const r=list[+b.dataset.ac]; const m=attMail(r,linkOf(r)); copyText("Objet : "+m.su+"\n\n"+m.body,"Message et lien copiés : collez-les dans votre messagerie."); markSent(r); });
+  host.querySelectorAll("[data-av]").forEach(b=>b.onclick=()=>{ const r=list[+b.dataset.av]; window.open(linkOf(r),"_blank","noopener")||openAttestationView(attStore()[r.id].code); });
+  const all=$("attAll"); if(all) all.onclick=async()=>{ all.disabled=true; let n=0; for(const r of list){ if(!attStore()[r.id]){ try{ await issue(r); n++; }catch(e){} } } toast(n?n+" attestation(s) délivrée(s).":"Toutes les attestations sont déjà délivrées."); renderAttList(); };
+  $("attCopyAll").onclick=()=>{ const s=attStore(); const rows=list.filter(r=>s[r.id]).map(r=>[r.name,attEmailFor(r),r.score,attLink(s[r.id].code)].join("\t")); if(!rows.length){ toast("Délivrez d'abord les attestations."); return; } copyText("Candidat\tE-mail\tScore\tLien de l'attestation\n"+rows.join("\n"),"Liens copiés : collez-les dans un tableur."); };
+}
 
 ;
 /* ============================================================
@@ -5728,7 +5912,7 @@ const store={ get(k,d){ try{ const v=localStorage.getItem("certinova:"+k); retur
 let DB=null, USER=null, CAN_ADMIN=false;
 (async()=>{ try{ if(window.claude&&window.claude.use){ DB=await window.claude.use("db"); USER=await window.claude.use("user"); if(USER){ try{ CAN_ADMIN=!!(await USER.canEdit())||!!(await USER.isOwner()); }catch(e){} } await loadConfig(); updateAdminUi(); if(!$("scr-home").hidden&&restricted()) renderHome(); renderHomeExtras(); } }catch(e){ DB=null; } })();
 
-function show(id){ ["scr-home","scr-brief","scr-exam","scr-review","scr-results","scr-trainer","scr-conv"].forEach(s=>{ const el=$(s); if(el) el.hidden=s!==id; }); window.scrollTo(0,0); }
+function show(id){ ["scr-home","scr-brief","scr-exam","scr-review","scr-results","scr-trainer","scr-conv","scr-att"].forEach(s=>{ const el=$(s); if(el) el.hidden=s!==id; }); window.scrollTo(0,0); }
 function fmtClock(s){ s=Math.max(0,Math.round(s)); return String(Math.floor(s/3600)).padStart(2,"0")+":"+String(Math.floor(s%3600/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }
 function domChips(p){ const d=[...new Set(p.taches.map(t=>t.dom))]; return d.map(k=>`<span class="chip">${esc({OPT:"Options",DATA:"Données",FORM:"Formules & macros",CHART:"Graphiques & TCD"}[k])}</span>`).join(""); }
 function cnModal(title,html,buttons,onMount){ const b=document.createElement("div"); b.className="cn-modal-back"; b.innerHTML=`<div class="cn-modal" role="dialog" aria-modal="true"><h3>${esc(title)}</h3>${html}<div class="acts">${buttons.map((x,i)=>`<button class="btn ${x.cls||"btn-line"}" data-mb="${i}">${esc(x.t)}</button>`).join("")}</div></div>`; document.body.appendChild(b); const close=()=>b.remove(); b.querySelectorAll("[data-mb]").forEach(el=>el.onclick=()=>{ const r=buttons[+el.dataset.mb].fn&&buttons[+el.dataset.mb].fn(b); if(r!==false) close(); }); b.addEventListener("keydown",e=>{ e.stopPropagation(); if(e.key==="Escape") close(); }); if(onMount) onMount(b); const f=b.querySelector("input,textarea,.btn"); if(f) setTimeout(()=>f.focus(),0); return b; }
@@ -5753,6 +5937,7 @@ function renderHome(keep){
         <h2>Connexion du candidat</h2><p class="sub">Vos résultats sont enregistrés à votre nom pour votre formateur.</p>
         <div class="field"><label for="hmName">Nom et prénom</label><input id="hmName" required placeholder="Ex. : Awa Ouédraogo" value="${escA(store.get("lastName",""))}"></div>
         <div class="field"><label for="hmGroup">Groupe ou session (facultatif)</label><input id="hmGroup" placeholder="Ex. : Promo Novembre 2026" value="${escA(store.get("lastGroup",""))}"></div>
+        <div class="field"><label for="hmMail">Adresse e-mail (facultatif, pour recevoir votre attestation)</label><input id="hmMail" type="email" autocomplete="email" value="${escA(store.get("lastMail",""))}"></div>
         <div class="field"><label for="hmExam">Examen blanc</label><select id="hmExam">${EXAMS.map(x=>`<option value="${x.id}"${x.id===EXAM.id?" selected":""}>${esc(x.titre)} — ${x.projects.length} projets, ${x.projects.reduce((n,p)=>n+p.taches.length,0)} tâches</option>`).join("")}</select></div>
         <div class="field"><label>Mode</label><div class="seg"><label><input type="radio" name="hmMode" value="exam" checked><span><b>Examen</b>Chronométré, correction à la fin</span></label><label><input type="radio" name="hmMode" value="train"><span><b>Entraînement</b>Indices, vérification et solutions</span></label></div></div>
         <div class="field" id="hmProjWrap" hidden><label for="hmProj">Projets</label><select id="hmProj"><option value="all">Tous les projets (${PJ.length})</option>${PJ.map((p,i)=>`<option value="${i}">Projet ${i+1} : ${esc(p.titre)}</option>`).join("")}</select></div>
@@ -5772,7 +5957,7 @@ function renderHome(keep){
   if(keep){ $("hmName").value=keep.name; $("hmGroup").value=keep.group; f.querySelector(`input[name=hmMode][value=${keep.mode}]`).checked=true; $("hmProjWrap").hidden=keep.mode!=="train"; $("hmDur").value=keep.dur; }
   $("hmExam").onchange=e=>{ const k={name:$("hmName").value,group:$("hmGroup").value,mode:f.querySelector("input[name=hmMode]:checked").value,dur:$("hmDur").value}; setExam(e.target.value); renderHome(k); $("hmExam").focus(); };
   f.onsubmit=e=>{ e.preventDefault(); const name=$("hmName").value.trim(); if(!name){ $("hmName").focus(); return; }
-    E.candidate=name; E.group=$("hmGroup").value.trim(); E.mode=f.querySelector("input[name=hmMode]:checked").value; E.duration=+$("hmDur").value;
+    E.candidate=name; E.group=$("hmGroup").value.trim(); E.mail=(($("hmMail")||{}).value||"").trim(); store.set("lastMail",E.mail); E.mode=f.querySelector("input[name=hmMode]:checked").value; E.duration=+$("hmDur").value;
     const pj=$("hmProj").value; E.order=E.mode==="train"&&pj!=="all"?[+pj]:PJ.map((_,i)=>i); E.conv=null;
     store.set("lastName",name); store.set("lastGroup",E.group); renderBrief(); show("scr-brief"); };
   $("hmTrainer").onclick=openTrainerGate; wireCodeEntry();
@@ -5920,7 +6105,7 @@ function finishExam(auto){
   if(X.edit) commitEdit();
   clearInterval(E.timer); E.started=false;
   const g=gradeAll();
-  const rec={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:E.candidate,group:E.group,mode:E.mode,date:new Date().toISOString(),score:g.score,pass:g.pass,correct:g.correct,total:g.total,time:E.elapsed,duration:E.duration,exam:EXAM.id,projects:E.order.map(i=>PJ[i].id),dom:g.dom,tasks:Object.fromEntries(g.tasks.map(t=>[t.id,t.ok?1:0])),comments:g.tasks.filter(t=>t.st.comment).map(t=>({id:t.id,c:t.st.comment})),auto:!!auto,conv:E.conv?E.conv.i:undefined};
+  const rec={id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:E.candidate,group:E.group,mode:E.mode,date:new Date().toISOString(),score:g.score,pass:g.pass,correct:g.correct,total:g.total,time:E.elapsed,duration:E.duration,exam:EXAM.id,projects:E.order.map(i=>PJ[i].id),dom:g.dom,tasks:Object.fromEntries(g.tasks.map(t=>[t.id,t.ok?1:0])),comments:g.tasks.filter(t=>t.st.comment).map(t=>({id:t.id,c:t.st.comment})),auto:!!auto,conv:E.conv?E.conv.i:undefined,mail:E.mail||undefined};
   E.finished={rec,g};
   const h=store.get("history",[]); h.push(rec); store.set("history",h.slice(-50)); store.del("session");
   saveRemote(rec);
@@ -5972,10 +6157,10 @@ function renderTrainer(){
   const imported=store.get("imported",[]); const local=store.get("history",[]);
   $("scr-trainer").innerHTML=`<div class="rev"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">${brandLogo(46)}<span style="flex:1"></span><button class="btn btn-line" id="trHome">Accueil</button></div><h1>Espace formateur</h1>
   <p class="muted" id="trMode">${DB&&CAN_ADMIN?"Les résultats de vos candidats arrivent ici en direct.":"Collez les codes de résultat envoyés par vos candidats, ou consultez les tentatives passées sur cet appareil."}</p>
-  <div class="dom-list" id="trConvAdmin"></div><div class="dom-list" id="trConvList"></div><div class="dom-list" id="trVerify"></div><div id="trStats"></div>
+  <div class="dom-list" id="trConvAdmin"></div><div class="dom-list" id="trConvList"></div><div class="dom-list" id="trAtt"></div><div class="dom-list" id="trVerify"></div><div id="trStats"></div>
   <div class="dom-list"><h3 style="margin:0 0 8px;font-family:var(--f-display);font-size:16px">Ajouter des résultats</h3><p class="small muted" style="margin:0 0 8px">Un code par ligne. Les codes figurent en bas du rapport de score de chaque candidat.</p><textarea id="trCodes" style="width:100%;min-height:80px;font-family:var(--f-mono);font-size:12px;padding:8px;border:1px solid var(--cn-line);border-radius:8px" placeholder="Collez ici un ou plusieurs codes de résultat"></textarea><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-night" id="trImport">Ajouter</button><button class="btn btn-line" id="trClear">Vider les résultats importés</button><span class="small muted" id="trMsg"></span></div></div>
   <div class="dom-list" id="trTableWrap"></div><div class="dom-list" id="trAccess"></div></div>`;
-  renderConvAdmin($("trConvAdmin")); renderCertVerify($("trVerify")); renderAccessSettings($("trAccess"));
+  renderConvAdmin($("trConvAdmin")); renderCertVerify($("trVerify")); renderAttAdmin($("trAtt")); renderAccessSettings($("trAccess"));
   $("trHome").onclick=()=>{ if(TR_UNSUB){ TR_UNSUB(); TR_UNSUB=null; } renderHome(); show("scr-home"); };
   $("trImport").onclick=()=>{ const lines=$("trCodes").value.split(/\s+/).filter(Boolean); let n=0, bad=0; const cur=store.get("imported",[]); lines.forEach(l=>{ const r=decodeRec(l); if(r){ if(!cur.some(x=>x.id===r.id)){ cur.push(r); n++; } } else bad++; }); store.set("imported",cur); $("trMsg").textContent=n+" résultat(s) ajouté(s)"+(bad?", "+bad+" code(s) illisible(s)":"")+"."; $("trCodes").value=""; drawTrainer(remoteRows); };
   $("trClear").onclick=()=>{ store.set("imported",[]); drawTrainer(remoteRows); };
@@ -5985,7 +6170,7 @@ function renderTrainer(){
     try{ TR_UNSUB=DB.collection("results").onSnapshot(snap=>{ clearTimeout(t); remoteRows=[]; snap.docs.forEach(d=>{ const o=d.data(); (o.attempts||[]).forEach(a=>remoteRows.push(a)); }); drawTrainer(remoteRows); },err=>{ clearTimeout(t); const m=$("trMode"); if(m) m.textContent="Les résultats partagés ne sont pas disponibles pour ce compte. Les données locales et importées restent affichées."; }); }catch(e){ clearTimeout(t); } }
 }
 function drawTrainer(remote){
-  const all=[]; const seen=new Set(); (remote||[]).concat(store.get("imported",[]),store.get("history",[])).forEach(r=>{ if(r&&!seen.has(r.id)){ seen.add(r.id); all.push(r); } }); TR_ALL=all; setTimeout(renderConvList,0);
+  const all=[]; const seen=new Set(); (remote||[]).concat(store.get("imported",[]),store.get("history",[])).forEach(r=>{ if(r&&!seen.has(r.id)){ seen.add(r.id); all.push(r); } }); TR_ALL=all; setTimeout(()=>{ renderConvList(); renderAttList(); },0);
   const byName={}; all.forEach(r=>{ const k=(r.name||"?").trim().toLowerCase(); (byName[k]=byName[k]||[]).push(r); });
   const cands=Object.values(byName).map(L=>{ L.sort((a,b)=>a.date.localeCompare(b.date)); const last=L[L.length-1]; return {name:last.name,group:last.group,n:L.length,best:Math.max(...L.map(x=>x.score)),last,L}; }).sort((a,b)=>b.last.date.localeCompare(a.last.date));
   const exams=all.filter(r=>r.mode==="exam"); const passRate=exams.length?Math.round(100*exams.filter(r=>r.pass).length/exams.length):null;
@@ -6003,8 +6188,8 @@ function drawTrainer(remote){
 }
 
 /* ---------------- démarrage ---------------- */
-function boot(){ const o=/^#c-/i.test(location.hash)?decConv(location.hash):null; if(o){ openConvocation(o); return; } renderHome(); show("scr-home"); }
-window.addEventListener("hashchange",()=>{ const o=/^#c-/i.test(location.hash)?decConv(location.hash):null; if(o&&!E.started) openConvocation(o); });
+function boot(){ if(/^#a-/i.test(location.hash)){ openAttestationView(location.hash); return; } const o=/^#c-/i.test(location.hash)?decConv(location.hash):null; if(o){ openConvocation(o); return; } renderHome(); show("scr-home"); }
+window.addEventListener("hashchange",()=>{ if(/^#a-/i.test(location.hash)){ openAttestationView(location.hash); return; } const o=/^#c-/i.test(location.hash)?decConv(location.hash):null; if(o&&!E.started) openConvocation(o); });
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();
 
 </script>

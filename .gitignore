@@ -1,0 +1,3 @@
+# Ne jamais publier la cle privee de signature
+*cle*.json
+*.key
